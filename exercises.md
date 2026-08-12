@@ -393,14 +393,6 @@ Hoàn thành `reflection.md` bằng kết quả thật từ Exercise 3.2.
 
 ---
 
----
-
-## Part 4 — Reflection (11:35–11:50)
-
-Hoàn thành `reflection.md` bằng kết quả thật từ Exercise 3.2.
-
----
-
 ## Completion Checklist
 
 Hoàn thành kiểm tra cuối trong khoảng 11:50–12:00.
@@ -410,6 +402,6 @@ Hoàn thành kiểm tra cuối trong khoảng 11:50–12:00.
 - [x] Exercise 3.1 hoàn thành trong file JSON và bảng kết quả phía trên.
 - [x] Exercise 3.2 có năm metrics, aggregate report và ba cases thấp nhất.
 - [x] Exercise 3.3 có rubric 1–5 và bias controls.
-- [ ] `reflection.md` có ba failure analyses và regression strategy.
+- [x] `reflection.md` có ba failure analyses và regression strategy.
 - [x] Đã copy `template.py` thành `solution/solution.py`.
 - [x] Exercise 3.4 và 3.5 đã hoàn thành theo lựa chọn bonus.
