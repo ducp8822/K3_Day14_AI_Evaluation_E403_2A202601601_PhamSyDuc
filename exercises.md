@@ -30,11 +30,11 @@ critical.
 
 | Metric | Acceptable Low Score Scenario | Critical Low Score Scenario | Action Required |
 |---|---|---|---|
-| Faithfulness | | | |
-| Answer Relevance | | | |
-| Context Recall | | | |
-| Context Precision | | | |
-| Completeness | | | |
+| Faithfulness | Score thấp có thể chấp nhận khi câu trả lời chỉ diễn đạt lại context bằng cách khác mà không thêm claim thực tế mới, hoặc agent từ chối trả lời khi context không đủ và đó là hành vi được rubric cho phép. | Agent bịa đặt hoặc khẳng định không có căn cứ các số liệu, hạn nộp, quy định học phí/học bổng; chỉ một claim quan trọng không được context hỗ trợ cũng có thể là critical. | Thêm guardrail kiểm tra từng claim với context, yêu cầu agent nêu rõ khi thiếu evidence và thắt chặt system prompt ("Chỉ trả lời dựa trên context"). |
+| Answer Relevance | Score thấp có thể chấp nhận khi agent hỏi lại để làm rõ câu hỏi mơ hồ, hoặc từ chối câu hỏi out-of-scope/adversarial đúng policy nhưng evaluator chưa nhận diện được refusal hợp lệ. | Agent trả lời lạc đề hoàn toàn (off-topic), ví dụ được hỏi quy trình đóng học phí nhưng lại hướng dẫn đăng ký môn. | Cải thiện intent detection/query rewriting, cập nhật expected answer và rubric để phân biệt câu trả lời đúng với refusal hợp lệ. |
+| Context Recall | Score thấp có thể chấp nhận khi gold/expected answer chứa chi tiết tùy chọn, dư thừa hoặc không cần cho câu hỏi; trước khi tăng `top_k` cần kiểm tra và thu gọn gold evidence. | Retriever thực sự không lấy được một phần evidence bắt buộc, khiến LLM không thể trả lời đúng hoặc bị thiếu ý nghiêm trọng. | Sửa gold answer/evidence nếu annotation quá rộng; nếu evidence thực sự bị bỏ sót thì tăng `top_k`, cải thiện chunking hoặc dùng Hybrid Search (BM25 + Dense Retrieval). |
+| Context Precision | Score thấp có thể chấp nhận khi `top_k=5` vẫn chứa đủ evidence liên quan, các chunk không liên quan không chiếm phần lớn vị trí đầu và câu trả lời không bị ảnh hưởng dù evidence nằm ở vị trí 4–5. | Các chunk không liên quan chiếm các vị trí đầu, làm evidence liên quan bị xếp hạng thấp hoặc bị lẫn giữa nhiều chunk rác ("Lost in the Middle"), từ đó khiến model trả lời sai/thiếu. Evidence nằm ngoài `top_k` là vấn đề của Context Recall, không phải Context Precision. | Áp dụng reranking (Cross-Encoder / Overlap Reranker), điều chỉnh `top_k` và cải thiện query/retriever để đưa các chunk liên quan lên đầu. |
+| Completeness | Score thấp có thể chấp nhận khi người dùng yêu cầu câu trả lời ngắn và agent vẫn nêu đủ các ý bắt buộc; các chi tiết tùy chọn nên được phân biệt với required claims trong expected answer. | Trả lời thiếu điều kiện bắt buộc, ngoại lệ (exceptions) hoặc deadline quan trọng khiến sinh viên hiểu sai. | Dùng cấu trúc/checklist cho các điều kiện bắt buộc, bổ sung few-shot examples và yêu cầu LLM tự kiểm tra đủ các claim quan trọng trước khi trả lời. |
 
 ### Exercise 1.2 — Bias trong LLM-as-a-Judge
 
@@ -47,14 +47,23 @@ Ba bias thường gặp:
 **Câu 1: Thiết kế experiment phát hiện position bias với ít nhất hai conditions.**
 
 > *Câu trả lời:*
+> 1. **Chuẩn bị dữ liệu:** Tạo nhiều cặp answer có chất lượng đã biết hoặc tương đương, gán nhãn logic A/B ngẫu nhiên và chạy mỗi cặp nhiều lần. Khi chấm điểm, lưu kết quả theo `answer_id`, không chỉ theo vị trí.
+> 2. **Condition 1 (Original Order):** Đưa cùng một cặp vào prompt theo thứ tự `[Answer A, Answer B]`, giữ nguyên question, rubric và yêu cầu Judge chọn câu tốt hơn hoặc chấm điểm từng câu.
+> 3. **Condition 2 (Swapped Order):** Đổi vị trí thành `[Answer B, Answer A]` trong một lần gọi độc lập; giữ nguyên hoàn toàn question, rubric và nội dung answer.
+> 4. **Đánh giá:** So sánh tỷ lệ thắng và chênh lệch điểm của answer đứng trước với answer đứng sau, đồng thời đối chiếu theo `answer_id`. Nếu answer đứng trước liên tục được ưu tiên sau khi đã kiểm soát chất lượng nội dung, đó là bằng chứng của Position Bias.
 
 **Câu 2: Làm thế nào giảm verbosity bias bằng rubric design?**
 
 > *Câu trả lời:*
+> 1. **Tách nội dung khỏi độ dài:** Yêu cầu Judge chấm điểm theo key facts/evidence chính xác, coverage của các ý bắt buộc và khả năng hành động; không dùng số câu hoặc số token làm proxy cho chất lượng.
+> 2. **Chỉ phạt phần thừa:** Phạt redundancy, fluff hoặc claim không liên quan; không phạt độ dài nếu phần dài hơn cung cấp thêm thông tin cần thiết hoặc giải thích rõ điều kiện/ngoại lệ.
+> 3. **Định nghĩa thang điểm 1–5 rõ ràng:** 5 điểm = "Chính xác, đầy đủ và súc tích". Câu trả lời dài nhưng hữu ích vẫn có thể đạt 5; câu trả lời dài mà không thêm giá trị chỉ nên đạt tối đa 3.
 
 **Câu 3: Tại sao cần calibrate LLM judge với human labels?**
 
 > *Câu trả lời:*
+> 1. LLM Judge cũng là một model ngôn ngữ, vẫn có thể hallucinate, gặp position/verbosity/self-preference bias hoặc hiểu sai chính sách đặc thù của Northstar University.
+> 2. Cần dùng một mẫu case đại diện được human chấm độc lập, có thể adjudicate các case bất đồng, rồi đo mức đồng thuận. Dùng weighted Cohen's Kappa cho nhãn thứ bậc (ordinal), Cohen's Kappa cho nhãn phân loại không có thứ tự (nominal), và Spearman correlation hoặc ICC cho score liên tục. Nếu agreement thấp, cần sửa rubric, few-shot examples hoặc threshold trước khi tự động hóa hoàn toàn; các case high-stakes vẫn cần human review.
 
 ### Exercise 1.3 — Evaluation trong CI/CD
 
@@ -62,13 +71,16 @@ Ba bias thường gặp:
 
 | Metric | Threshold | Lý do |
 |---|---:|---|
-| Faithfulness | | |
-| Answer Relevance | | |
-| Completeness | | |
+| Faithfulness | 0.85 | Đây là metric quan trọng nhất về an toàn và độ tin cậy. Block nếu trung bình dưới 0.85 hoặc có bất kỳ case nào chứa hallucination nghiêm trọng về chính sách, deadline, học phí hay học bổng. |
+| Answer Relevance | 0.80 | Đảm bảo AI trả lời đúng trọng tâm câu hỏi của sinh viên, không trả lời lan man hoặc lạc đề. Các refusal đúng policy cần được chấm bằng expected refusal riêng, không để làm sai threshold. |
+| Completeness | 0.80 | Đảm bảo cung cấp đủ thông tin cốt lõi và các điều kiện bắt buộc. Có thể cho phép thiếu chi tiết tùy chọn, nhưng không được thiếu deadline, exception hoặc bước hành động quan trọng. |
 
 **Câu 2: Khi nào dùng offline evaluation, online evaluation và human review?**
 
 > *Câu trả lời:*
+> - **Offline Evaluation (Pre-deployment):** Chạy trong giai đoạn phát triển và CI/CD Pipeline trước khi release trên Golden Dataset cố định. Dùng để kiểm tra tính ổn định và phát hiện regression khi thay đổi prompt, model, retriever hoặc chunking. Deployment chỉ được pass khi các aggregate threshold đạt yêu cầu và không có hard-fail safety case.
+> - **Online Evaluation (Post-deployment):** Chạy giám sát liên tục trên dữ liệu thật sau khi hệ thống lên production: user feedback, latency, error rate, mẫu log được lấy ngẫu nhiên và các chỉ số chất lượng. Dùng để phát hiện data drift, thay đổi phân bố câu hỏi hoặc sự cố thời gian thực; cần tuân thủ quy định bảo vệ dữ liệu cá nhân.
+> - **Human Review:** Dùng khi xây dựng/cập nhật Golden Dataset, định kỳ trên mẫu production được chọn theo rủi ro (có thể bắt đầu với 1–5%), và bắt buộc với case high-stakes, điểm bất thường, khiếu nại của người dùng hoặc khi offline/online evaluation mâu thuẫn.
 
 ---
 
